@@ -85,21 +85,17 @@ describe('BookingService', () => {
   });
 
   it('должен удалять бронирование по id', () => {
-    service.addBooking({
+    const booking = service.addBooking({
       resourceId: 1,
       start: new Date('2024-01-01T10:00:00'),
       end: new Date('2024-01-01T11:00:00'),
       title: 'Удаляемая встреча'
     });
 
-    const bookingsBefore = service.getBookings();
-    expect(bookingsBefore.length).toBeGreaterThan(0);
+    expect(service.getBookings()).toContain(booking);
 
-    const bookingId = bookingsBefore[0].id;
+    service.removeBooking(booking.id);
 
-    service.removeBooking(bookingId);
-
-    const bookingsAfter = service.getBookings();
-    expect(bookingsAfter.some(b => b.id === bookingId)).toBe(false);
+    expect(service.getBookings()).not.toContain(booking);
   });
 });

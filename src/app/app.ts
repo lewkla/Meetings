@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatIconModule } from '@angular/material/icon';
@@ -9,6 +9,7 @@ import { CalendarComponent } from './components/calendar.component';
 import { ResourceManagementComponent } from './components/resource-management.component';
 import { BookingService } from './services/booking.service';
 import { ResourceService } from './services/resource.service';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-root',
@@ -42,15 +43,15 @@ import { ResourceService } from './services/resource.service';
           <div class="stat-card">
             <mat-icon class="stat-icon">event</mat-icon>
             <div class="stat-content">
-              <div class="stat-number">{{ getTotalBookings() }}</div>
+              <div class="stat-number">{{ totalBookings }}</div>
               <div class="stat-label">Всего бронирований</div>
             </div>
           </div>
-          
+
           <div class="stat-card">
             <mat-icon class="stat-icon">meeting_room</mat-icon>
             <div class="stat-content">
-              <div class="stat-number">{{ getTotalResources() }}</div>
+              <div class="stat-number">{{ totalResources }}</div>
               <div class="stat-label">Доступных ресурсов</div>
             </div>
           </div>
@@ -62,12 +63,12 @@ import { ResourceService } from './services/resource.service';
             <mat-icon>add</mat-icon>
             Новое бронирование
           </button>
-          
+
           <button mat-stroked-button color="accent" class="secondary-action-btn" (click)="scrollToCalendar()">
             <mat-icon>calendar_month</mat-icon>
             Календарь
           </button>
-          
+
           <button mat-stroked-button color="accent" class="secondary-action-btn" (click)="scrollToResources()">
             <mat-icon>meeting_room</mat-icon>
             Ресурсы
@@ -86,7 +87,7 @@ import { ResourceService } from './services/resource.service';
               <mat-card-subtitle>Создайте новую встречу</mat-card-subtitle>
             </mat-card-header>
             <mat-card-content>
-              <app-booking-form (bookingCreated)="onBookingCreated()"></app-booking-form>
+              <app-booking-form></app-booking-form>
             </mat-card-content>
           </mat-card>
 
@@ -100,7 +101,7 @@ import { ResourceService } from './services/resource.service';
               <mat-card-subtitle>Просмотр всех запланированных встреч</mat-card-subtitle>
             </mat-card-header>
             <mat-card-content>
-              <app-calendar (bookingDeleted)="onBookingDeleted()"></app-calendar>
+              <app-calendar></app-calendar>
             </mat-card-content>
           </mat-card>
 
@@ -114,7 +115,7 @@ import { ResourceService } from './services/resource.service';
               <mat-card-subtitle>Добавление и удаление ресурсов</mat-card-subtitle>
             </mat-card-header>
             <mat-card-content>
-              <app-resource-management (resourceChanged)="onResourceChanged()"></app-resource-management>
+              <app-resource-management></app-resource-management>
             </mat-card-content>
           </mat-card>
         </div>
@@ -122,6 +123,7 @@ import { ResourceService } from './services/resource.service';
 
       <!-- Футер -->
       <footer class="app-footer">
+        <p>Система планирования встреч © 2024</p>
       </footer>
     </div>
   `,
@@ -337,44 +339,49 @@ import { ResourceService } from './services/resource.service';
     }
   `]
 })
-export class App {
+export class App implements OnInit, OnDestroy {
+  totalBookings: number = 0;
+  totalResources: number = 0;
+  private bookingsSubscription!: Subscription;
+
   constructor(
     private bookingService: BookingService,
     private resourceService: ResourceService
   ) {}
 
-  getTotalBookings(): number {
-    return this.bookingService.getBookings().length;
+  ngOnInit() {
+    this.updateStats();
+    this.bookingsSubscription = this.bookingService.getBookingsChanged().subscribe(() => {
+      this.updateStats();
+    });
   }
 
-  getTotalResources(): number {
-    return this.resourceService.getTotalResources();
+  ngOnDestroy() {
+    if (this.bookingsSubscription) {
+      this.bookingsSubscription.unsubscribe();
+    }
+  }
+
+  updateStats() {
+    this.totalBookings = this.bookingService.getBookings().length;
+    this.totalResources = this.resourceService.getTotalResources();
   }
 
   scrollToBooking() {
-    document.getElementById('booking-section')?.scrollIntoView({ 
-      behavior: 'smooth' 
+    document.getElementById('booking-section')?.scrollIntoView({
+      behavior: 'smooth'
     });
   }
 
   scrollToCalendar() {
-    document.getElementById('calendar-section')?.scrollIntoView({ 
-      behavior: 'smooth' 
+    document.getElementById('calendar-section')?.scrollIntoView({
+      behavior: 'smooth'
     });
   }
 
   scrollToResources() {
-    document.getElementById('resources-section')?.scrollIntoView({ 
-      behavior: 'smooth' 
+    document.getElementById('resources-section')?.scrollIntoView({
+      behavior: 'smooth'
     });
-  }
-
-  onBookingCreated() {
-  }
-
-  onBookingDeleted() {
-  }
-
-  onResourceChanged() {
   }
 }

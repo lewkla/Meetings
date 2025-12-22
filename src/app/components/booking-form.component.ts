@@ -56,7 +56,7 @@ import { ResourceService } from '../services/resource.service';
 
         <mat-card-content>
           <form [formGroup]="bookingForm" (ngSubmit)="onSubmit()" class="booking-form">
-            
+
             <div class="form-progress">
               <div class="progress-steps">
                 <div class="progress-step" [class.active]="currentStep === 1">
@@ -88,7 +88,7 @@ import { ResourceService } from '../services/resource.service';
                 </div>
 
                 <div class="resources-grid">
-                  <div *ngFor="let resource of resources" 
+                  <div *ngFor="let resource of resources"
                        class="resource-card"
                        [class.selected]="bookingForm.get('resourceId')?.value === resource.id"
                        (click)="selectResource(resource.id)">
@@ -153,22 +153,22 @@ import { ResourceService } from '../services/resource.service';
                       <span>Быстрый выбор:</span>
                     </div>
                     <div class="time-chips">
-                      <button mat-stroked-button type="button" 
-                              (click)="setQuickTime(1)" 
+                      <button mat-stroked-button type="button"
+                              (click)="setQuickTime(1)"
                               class="time-chip">
                         1 час
                       </button>
-                      <button mat-stroked-button type="button" 
+                      <button mat-stroked-button type="button"
                               (click)="setQuickTime(1.5)"
                               class="time-chip">
                         1.5 часа
                       </button>
-                      <button mat-stroked-button type="button" 
+                      <button mat-stroked-button type="button"
                               (click)="setQuickTime(2)"
                               class="time-chip">
                         2 часа
                       </button>
-                      <button mat-stroked-button type="button" 
+                      <button mat-stroked-button type="button"
                               (click)="setQuickTime(3)"
                               class="time-chip">
                         Пол дня
@@ -196,7 +196,7 @@ import { ResourceService } from '../services/resource.service';
                 <div class="meeting-details">
                   <mat-form-field appearance="outline" class="full-width">
                     <mat-label>Название встречи</mat-label>
-                    <input matInput formControlName="title" 
+                    <input matInput formControlName="title"
                            placeholder="Ежедневная планерка, Brainstorming...">
                     <mat-icon matPrefix>title</mat-icon>
                     <mat-hint>Будет отображаться в календаре</mat-hint>
@@ -210,7 +210,7 @@ import { ResourceService } from '../services/resource.service';
 
                   <mat-form-field appearance="outline" class="full-width">
                     <mat-label>Описание встречи (необязательно)</mat-label>
-                    <textarea matInput formControlName="description" 
+                    <textarea matInput formControlName="description"
                              rows="4"
                              placeholder="Цели, повестка, необходимые материалы..."></textarea>
                     <mat-icon matPrefix>notes</mat-icon>
@@ -269,8 +269,8 @@ import { ResourceService } from '../services/resource.service';
             <!-- Кнопки навигации -->
             <div class="form-navigation">
               <div class="nav-buttons">
-                <button mat-stroked-button 
-                        type="button" 
+                <button mat-stroked-button
+                        type="button"
                         (click)="previousStep()"
                         *ngIf="currentStep > 1"
                         class="nav-button">
@@ -278,16 +278,16 @@ import { ResourceService } from '../services/resource.service';
                   Назад
                 </button>
 
-                <button mat-stroked-button 
-                        type="button" 
+                <button mat-stroked-button
+                        type="button"
                         (click)="nextStep()"
-                        *ngIf="currentStep < 3 && !isLastStepValid()"
+                        *ngIf="currentStep < 3 && isStepValid()"
                         class="nav-button">
                   Далее
                   <mat-icon>arrow_forward</mat-icon>
                 </button>
 
-                <button mat-raised-button 
+                <button mat-raised-button
                         color="primary"
                         type="submit"
                         [disabled]="bookingForm.invalid || bookingForm.pending"
@@ -299,7 +299,7 @@ import { ResourceService } from '../services/resource.service';
                 </button>
               </div>
 
-              <button mat-button 
+              <button mat-button
                       type="button"
                       (click)="resetForm()"
                       class="reset-button">
@@ -335,7 +335,7 @@ import { ResourceService } from '../services/resource.service';
               <div>
                 <div class="preview-label">Время</div>
                 <div class="preview-value">
-                  {{ bookingForm.get('start')?.value | date:'dd.MM.yyyy HH:mm' }} - 
+                  {{ bookingForm.get('start')?.value | date:'dd.MM.yyyy HH:mm' }} -
                   {{ bookingForm.get('end')?.value | date:'HH:mm' }}
                 </div>
               </div>
@@ -1025,17 +1025,23 @@ export class BookingFormComponent implements OnInit {
 
   setQuickTime(hours: number) {
     const start = new Date();
+    start.setMinutes(0, 0, 0);
+
     const end = new Date(start.getTime() + hours * 60 * 60 * 1000);
-    
-    this.bookingForm.get('start')?.setValue(start.toISOString().slice(0, 16));
-    this.bookingForm.get('end')?.setValue(end.toISOString().slice(0, 16));
+
+    const formatDateTime = (date: Date) => {
+      return date.toISOString().slice(0, 16);
+    };
+
+    this.bookingForm.get('start')?.setValue(formatDateTime(start));
+    this.bookingForm.get('end')?.setValue(formatDateTime(end));
     this.showTimeInfo = true;
   }
 
   getDuration(): string {
     const start = this.bookingForm.get('start')?.value;
     const end = this.bookingForm.get('end')?.value;
-    
+
     if (!start || !end) return '';
 
     const duration = new Date(end).getTime() - new Date(start).getTime();
@@ -1065,14 +1071,14 @@ export class BookingFormComponent implements OnInit {
     }
   }
 
-  isLastStepValid(): boolean {
+  isStepValid(): boolean {
     switch (this.currentStep) {
       case 1:
-        return !this.bookingForm.get('resourceId')?.valid;
+        return this.bookingForm.get('resourceId')?.valid ?? false;
       case 2:
-        return !this.bookingForm.get('start')?.valid || !this.bookingForm.get('end')?.valid;
+        return (this.bookingForm.get('start')?.valid && this.bookingForm.get('end')?.valid) ?? false;
       case 3:
-        return !this.bookingForm.get('title')?.valid;
+        return this.bookingForm.get('title')?.valid ?? false;
       default:
         return false;
     }
@@ -1097,6 +1103,9 @@ export class BookingFormComponent implements OnInit {
       });
 
       this.resetForm();
+
+      setTimeout(() => {
+      }, 100);
     }
   }
 

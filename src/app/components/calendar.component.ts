@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -9,6 +9,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { BookingService } from '../services/booking.service';
 import { ResourceService } from '../services/resource.service';
 import { DatePipe } from '@angular/common';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-calendar',
@@ -88,31 +89,30 @@ import { DatePipe } from '@angular/common';
           <!-- Временные слоты -->
           <div *ngFor="let timeSlot of timeSlots" class="time-slot">
             <div class="time-label">{{ timeSlot }}</div>
-            <div *ngFor="let day of weekDays" 
+            <div *ngFor="let day of weekDays"
                  class="calendar-cell"
-                 [class.has-booking]="hasBooking(day.date, timeSlot)"
-                 [class.current-time]="isCurrentTime(day.date, timeSlot)">
-              
-              <div *ngFor="let booking of getBookingsForDayAndTime(day.date, timeSlot)"
+                 [class.has-booking]="hasBooking(day.date, timeSlot)">
+              <div *ngFor="let booking of getBookingsForDayAndTime(day.date, timeSlot); let i = index"
                    class="booking-card"
-                   [style.border-left-color]="getResourceColor(booking.resourceId)">
+                   [style.border-left-color]="getResourceColor(booking.resourceId)"
+                   [style.left]="getBookingLeft(i, day.date, timeSlot)"
+                   [style.width]="getBookingWidth(i, day.date, timeSlot)">
                 <div class="booking-content">
                   <div class="booking-header">
                     <div class="booking-title">{{ booking.title }}</div>
-                    <mat-icon class="booking-icon">event</mat-icon>
+                    <button mat-icon-button color="warn"
+                            (click)="deleteBooking(booking); $event.stopPropagation()"
+                            class="delete-booking-btn"
+                            matTooltip="Удалить встречу">
+                      <mat-icon>delete</mat-icon>
+                    </button>
                   </div>
-                  <div class="booking-time">{{ booking.start | date:'HH:mm' }} - {{ booking.end | date:'HH:mm' }}</div>
+                  <div class="booking-time">{{ formatTime(booking.start) }} - {{ formatTime(booking.end) }}</div>
                   <div class="booking-resource">
                     <mat-icon class="resource-icon">place</mat-icon>
                     {{ getResourceName(booking.resourceId) }}
                   </div>
                 </div>
-              </div>
-
-              <!-- Индикатор текущего времени -->
-              <div *ngIf="isCurrentTime(day.date, timeSlot)" class="current-time-indicator">
-                <div class="indicator-dot"></div>
-                <div class="indicator-line"></div>
               </div>
             </div>
           </div>
@@ -122,15 +122,15 @@ import { DatePipe } from '@angular/common';
       <!-- Список встреч -->
       <div *ngIf="view === 'list'" class="list-view">
         <div class="list-header">
-          <h3>Предстоящие встречи</h3>
+          <h3>Все встречи ({{ getAllBookings().length }})</h3>
         </div>
         <div class="bookings-list">
-          <div *ngFor="let booking of getUpcomingBookings()" class="booking-list-item">
+          <div *ngFor="let booking of getAllBookings()" class="booking-list-item">
             <div class="booking-list-content">
               <div class="booking-list-time">
-                <div class="booking-date">{{ booking.start | date:'dd MMM' }}</div>
+                <div class="booking-date">{{ formatFullDate(booking.start) }}</div>
                 <div class="booking-time-slot">
-                  {{ booking.start | date:'HH:mm' }} - {{ booking.end | date:'HH:mm' }}
+                  {{ formatTime(booking.start) }} - {{ formatTime(booking.end) }}
                 </div>
               </div>
               <div class="booking-list-details">
@@ -145,12 +145,17 @@ import { DatePipe } from '@angular/common';
                 </div>
               </div>
               <div class="booking-list-actions">
-                <button mat-icon-button color="warn" (click)="deleteBooking(booking)" 
+                <button mat-icon-button color="warn" (click)="deleteBooking(booking)"
                         class="delete-button" matTooltip="Удалить встречу">
                   <mat-icon>delete</mat-icon>
                 </button>
               </div>
             </div>
+          </div>
+          <div *ngIf="getAllBookings().length === 0" class="no-bookings">
+            <mat-icon>event_busy</mat-icon>
+            <p>Нет запланированных встреч</p>
+            <small>Создайте первую встречу</small>
           </div>
         </div>
       </div>
@@ -367,18 +372,15 @@ import { DatePipe } from '@angular/common';
       padding: 8px;
       border-right: 1px solid rgba(236, 72, 153, 0.1);
       border-bottom: 1px solid rgba(236, 72, 153, 0.1);
-      min-height: 100px;
+      min-height: 60px;
       background: rgba(255, 245, 247, 0.3);
       position: relative;
       transition: background 0.2s;
+      overflow: hidden;
     }
 
     .calendar-cell.has-booking {
       background: rgba(236, 72, 153, 0.02);
-    }
-
-    .calendar-cell.current-time {
-      background: rgba(236, 72, 153, 0.08);
     }
 
     .calendar-cell:last-child {
@@ -387,8 +389,6 @@ import { DatePipe } from '@angular/common';
 
     .booking-card {
       position: absolute;
-      left: 4px;
-      right: 4px;
       top: 4px;
       bottom: 4px;
       background: white;
@@ -399,80 +399,107 @@ import { DatePipe } from '@angular/common';
       flex-direction: column;
       overflow: hidden;
       z-index: 1;
+      margin: 0 2px;
+    }
+
+    /* Для нескольких встреч в одной ячейке */
+    .calendar-cell .booking-card:nth-child(1) {
+      left: 4px;
+      right: auto;
+      width: calc(100% - 8px);
+    }
+
+    .calendar-cell .booking-card:nth-child(2) {
+      left: 4px;
+      right: auto;
+      width: calc(50% - 6px);
+    }
+
+    .calendar-cell .booking-card:nth-child(3) {
+      left: calc(50% + 2px);
+      right: auto;
+      width: calc(50% - 6px);
+    }
+
+    .calendar-cell .booking-card:nth-child(4) {
+      left: 4px;
+      right: auto;
+      width: calc(33.33% - 4.67px);
+    }
+
+    .calendar-cell .booking-card:nth-child(5) {
+      left: calc(33.33% + 2.33px);
+      right: auto;
+      width: calc(33.33% - 4.67px);
+    }
+
+    .calendar-cell .booking-card:nth-child(6) {
+      left: calc(66.66% + 0.66px);
+      right: auto;
+      width: calc(33.33% - 4.67px);
     }
 
     .booking-content {
       flex: 1;
-      padding: 12px;
+      padding: 8px;
+      overflow: hidden;
     }
 
     .booking-header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      margin-bottom: 8px;
+      margin-bottom: 4px;
     }
 
     .booking-title {
       font-weight: 600;
-      font-size: 13px;
+      font-size: 12px;
       color: #5A2A3A;
       line-height: 1.3;
       flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
-    .booking-icon {
-      color: #EC4899;
-      font-size: 16px;
+    .delete-booking-btn {
+      width: 20px;
+      height: 20px;
+      line-height: 20px;
+      flex-shrink: 0;
+    }
+
+    .delete-booking-btn mat-icon {
+      font-size: 14px;
     }
 
     .booking-time {
-      font-size: 11px;
+      font-size: 10px;
       color: #9D6B7A;
       font-weight: 500;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .booking-resource {
-      font-size: 10px;
+      font-size: 9px;
       color: #5A2A3A;
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 3px;
       font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .resource-icon {
-      font-size: 12px;
+      font-size: 10px;
       opacity: 0.7;
-    }
-
-    .current-time-indicator {
-      position: absolute;
-      left: 0;
-      right: 0;
-      height: 2px;
-      background: #EC4899;
-      z-index: 2;
-      pointer-events: none;
-    }
-
-    .indicator-dot {
-      position: absolute;
-      width: 8px;
-      height: 8px;
-      background: #EC4899;
-      border-radius: 50%;
-      top: -3px;
-      left: 0;
-    }
-
-    .indicator-line {
-      position: absolute;
-      left: 8px;
-      right: 0;
-      height: 2px;
-      background: #EC4899;
+      flex-shrink: 0;
     }
 
     .list-view {
@@ -520,7 +547,7 @@ import { DatePipe } from '@angular/common';
 
     .booking-list-time {
       text-align: center;
-      min-width: 100px;
+      min-width: 120px;
       padding: 8px;
       background: white;
       border-radius: 8px;
@@ -576,6 +603,29 @@ import { DatePipe } from '@angular/common';
       background: rgba(239, 68, 68, 0.1);
     }
 
+    .no-bookings {
+      text-align: center;
+      padding: 40px 20px;
+      color: #9D6B7A;
+    }
+
+    .no-bookings mat-icon {
+      font-size: 48px;
+      height: 48px;
+      width: 48px;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+
+    .no-bookings p {
+      font-size: 16px;
+      margin: 8px 0;
+    }
+
+    .no-bookings small {
+      font-size: 14px;
+    }
+
     @media (max-width: 768px) {
       .header-content {
         flex-direction: column;
@@ -611,7 +661,7 @@ import { DatePipe } from '@angular/common';
       }
 
       .booking-title {
-        font-size: 11px;
+        font-size: 10px;
       }
 
       .booking-list-content {
@@ -632,19 +682,30 @@ import { DatePipe } from '@angular/common';
         justify-content: flex-end;
         margin-top: 12px;
       }
+
+      /* На мобильных показываем только одну встречу на ячейку */
+      .calendar-cell .booking-card:nth-child(n+2) {
+        display: none;
+      }
+
+      .calendar-cell .booking-card:nth-child(1) {
+        width: calc(100% - 8px);
+        left: 4px;
+      }
     }
   `]
 })
-export class CalendarComponent implements OnInit {
+export class CalendarComponent implements OnInit, OnDestroy {
   bookings: any[] = [];
   resources: any[] = [];
   currentDate = new Date();
   view: 'week' | 'list' = 'week';
+  private bookingsSubscription!: Subscription;
 
   timeSlots = [
-    '09:00', '10:00', '11:00', '12:00',
-    '13:00', '14:00', '15:00', '16:00',
-    '17:00', '18:00', '19:00', '20:00'
+    '08:00', '09:00', '10:00', '11:00', '12:00',
+    '13:00', '14:00', '15:00', '16:00', '17:00',
+    '18:00', '19:00'
   ];
 
   weekDays: { date: Date; name: string }[] = [];
@@ -655,9 +716,23 @@ export class CalendarComponent implements OnInit {
   ) {}
 
   ngOnInit() {
-    this.bookings = this.bookingService.getBookings();
+    this.loadBookings();
     this.resources = this.resourceService.getResources();
     this.generateWeekDays();
+
+    this.bookingsSubscription = this.bookingService.getBookingsChanged().subscribe(() => {
+      this.loadBookings();
+    });
+  }
+
+  ngOnDestroy() {
+    if (this.bookingsSubscription) {
+      this.bookingsSubscription.unsubscribe();
+    }
+  }
+
+  loadBookings() {
+    this.bookings = this.bookingService.getBookings();
   }
 
   generateWeekDays() {
@@ -682,7 +757,7 @@ export class CalendarComponent implements OnInit {
     if (this.view === 'week' && this.weekDays.length > 0) {
       const first = this.weekDays[0].date;
       const last = this.weekDays[6].date;
-      return `${first.getDate()} - ${last.getDate()} ${this.getMonthName(last.getMonth())}`;
+      return `${first.getDate()} - ${last.getDate()} ${this.getMonthName(last.getMonth())} ${last.getFullYear()}`;
     }
     return this.currentDate.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
   }
@@ -695,8 +770,8 @@ export class CalendarComponent implements OnInit {
   }
 
   getMonthName(month: number): string {
-    const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 
-                    'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+    const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
     return months[month];
   }
 
@@ -722,20 +797,8 @@ export class CalendarComponent implements OnInit {
   isToday(day: Date): boolean {
     const today = new Date();
     return day.getDate() === today.getDate() &&
-           day.getMonth() === today.getMonth() &&
-           day.getFullYear() === today.getFullYear();
-  }
-
-  isCurrentTime(day: Date, timeSlot: string): boolean {
-    const now = new Date();
-    const [hours, minutes] = timeSlot.split(':').map(Number);
-    const slotTime = new Date(day);
-    slotTime.setHours(hours, minutes, 0, 0);
-    
-    const nextSlotTime = new Date(slotTime);
-    nextSlotTime.setHours(hours + 1, minutes, 0, 0);
-    
-    return now >= slotTime && now < nextSlotTime && this.isToday(day);
+      day.getMonth() === today.getMonth() &&
+      day.getFullYear() === today.getFullYear();
   }
 
   hasBooking(day: Date, timeSlot: string): boolean {
@@ -748,10 +811,7 @@ export class CalendarComponent implements OnInit {
     return this.bookings.some(booking => {
       const bookingStart = new Date(booking.start);
       const bookingEnd = new Date(booking.end);
-      return bookingStart < slotEnd && bookingEnd > slotStart &&
-        bookingStart.getDate() === day.getDate() &&
-        bookingStart.getMonth() === day.getMonth() &&
-        bookingStart.getFullYear() === day.getFullYear();
+      return bookingStart < slotEnd && bookingEnd > slotStart;
     });
   }
 
@@ -759,22 +819,54 @@ export class CalendarComponent implements OnInit {
     const [hours, minutes] = timeSlot.split(':').map(Number);
     const slotStart = new Date(day);
     slotStart.setHours(hours, minutes, 0, 0);
+    const slotEnd = new Date(slotStart);
+    slotEnd.setHours(hours + 1, minutes, 0, 0);
 
     return this.bookings.filter(booking => {
       const bookingStart = new Date(booking.start);
-      return bookingStart.getDate() === day.getDate() &&
-        bookingStart.getMonth() === day.getMonth() &&
-        bookingStart.getFullYear() === day.getFullYear() &&
-        bookingStart.getHours() === hours;
+      const bookingEnd = new Date(booking.end);
+      return bookingStart < slotEnd && bookingEnd > slotStart;
     });
   }
 
-  getResourceColor(resource: any): string {
+  getBookingLeft(index: number, day: Date, timeSlot: string): string {
+    const bookings = this.getBookingsForDayAndTime(day, timeSlot);
+    if (bookings.length <= 1) return '4px';
+
+    if (bookings.length === 2) {
+      return index === 0 ? '4px' : 'calc(50% + 2px)';
+    }
+
+    if (bookings.length === 3) {
+      if (index === 0) return '4px';
+      if (index === 1) return 'calc(33.33% + 2.33px)';
+      return 'calc(66.66% + 0.66px)';
+    }
+
+    return '4px';
+  }
+
+  getBookingWidth(index: number, day: Date, timeSlot: string): string {
+    const bookings = this.getBookingsForDayAndTime(day, timeSlot);
+    if (bookings.length <= 1) return 'calc(100% - 8px)';
+
+    if (bookings.length === 2) {
+      return 'calc(50% - 6px)';
+    }
+
+    if (bookings.length === 3) {
+      return 'calc(33.33% - 4.67px)';
+    }
+
+    return 'calc(100% - 8px)';
+  }
+
+  getResourceColor(resourceId: number): string {
     const colors = [
       '#EC4899', '#8B5CF6', '#10B981', '#3B82F6',
       '#F59E0B', '#EF4444', '#06B6D4', '#8B5CF6'
     ];
-    return colors[resource.id % colors.length];
+    return colors[resourceId % colors.length];
   }
 
   getResourceName(resourceId: number): string {
@@ -782,10 +874,8 @@ export class CalendarComponent implements OnInit {
     return resource ? resource.name : 'Неизвестно';
   }
 
-  getUpcomingBookings() {
-    const now = new Date();
+  getAllBookings() {
     return this.bookings
-      .filter(b => new Date(b.start) >= now)
       .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
   }
 
@@ -793,7 +883,7 @@ export class CalendarComponent implements OnInit {
     const duration = new Date(booking.end).getTime() - new Date(booking.start).getTime();
     const hours = Math.floor(duration / (1000 * 60 * 60));
     const minutes = Math.floor((duration % (1000 * 60 * 60)) / (1000 * 60));
-    
+
     if (hours > 0) {
       return `${hours} ч ${minutes > 0 ? `${minutes} мин` : ''}`;
     }
@@ -803,7 +893,30 @@ export class CalendarComponent implements OnInit {
   deleteBooking(booking: any): void {
     if (confirm('Удалить эту встречу?')) {
       this.bookingService.removeBooking(booking.id);
-      this.bookings = this.bookingService.getBookings();
     }
+  }
+
+  // Вспомогательные методы для форматирования
+  formatDate(date: Date): string {
+    return new Date(date).toLocaleDateString('ru-RU', {
+      day: '2-digit',
+      month: 'short'
+    });
+  }
+
+  formatFullDate(date: Date): string {
+    return new Date(date).toLocaleDateString('ru-RU', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+  }
+
+  formatTime(date: Date): string {
+    return new Date(date).toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
   }
 }
